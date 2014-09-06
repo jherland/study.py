@@ -7,12 +7,12 @@ sub-module to import.  If the attribute name matches a *.py file in the
 directory, we load it; if it matches a sub-directory we load it as a LazyMod,
 recursively.  The constructor takes a filename, defaulting to __init__.py, that
 is loaded to give the 'raw' namespace of the object loaded; this is propagated
-to recursively-generated instances.  Thus, if a directory hieararchy has a bunch
+to recursively-generated instances.  Thus, if a directory hierarchy has a bunch
 of (say) config.py files, one per directory, to tell tools about the contents of
 the directory, loading the top-level directory as a LazyMod root will let you
 automagically reference root.foo.bar.baz, loading 'foo/bar/baz/config.py' to
 populate this object's namespace.  The result is thus much the same as a python
-package hierarcy, but without the need to explicitly import anything and with
+package hierarchy, but without the need to explicitly import anything and with
 all the imports done lazily.
 
 To reload one of these lazily-loaded attributes, e.g. following an update to its
