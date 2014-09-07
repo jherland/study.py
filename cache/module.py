@@ -19,8 +19,11 @@ To reload one of these lazily-loaded attributes, e.g. following an update to its
 source file, just del the relevant attribute.  Next time it's accessed, it'll be
 lazily reloaded.
 """
-from __builtin__ import __class__ as modbase
-# module is actually in __builtins__, but we can't reference it as such !
+# module is actually in __builtin__/builtins, but we can't reference it as such!
+try:
+    from builtins import __class__ as modbase # Python 3
+except ImportError:
+    from __builtin__ import __class__ as modbase # Python 2
 
 class Module (modbase):
     """Lazily-loaded module hierarchy.
@@ -90,9 +93,8 @@ Loaded from file %s
         import sys
         sys.path.insert(0, indir)
         try:
-            fd = open(path)
-            try: exec fd in into.__dict__
-            finally: fd.close()
+            with open(path) as f:
+                exec(f.read(), into.__dict__)
         finally:
             try: ind = sys.path.index(indir)
             except ValueError: pass
