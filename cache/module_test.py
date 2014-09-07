@@ -35,6 +35,18 @@ class Test_Submod(unittest.TestCase):
         with self.assertRaises(AttributeError):
             x = self.root.missing_submod.foo
 
+class Test_Disabled_submod(unittest.TestCase):
+
+    def setUp(self):
+        self.root = Module.Root(test_path('submod'), load_submod=False)
+
+    def test_root_lookup(self):
+        self.assertEqual(self.root.foo, "bar")
+
+    def test_lookup_submod_fails(self):
+        with self.assertRaises(AttributeError):
+            x = self.root.submod.foo
+
 class Test_Subdir(unittest.TestCase):
 
     def setUp(self):
@@ -73,6 +85,15 @@ class Test_Submod_vs_subdir(unittest.TestCase):
 
     def test_lookup_prefers_submod(self):
         self.assertEqual(self.root.foo.bar, "from foo.py")
+
+class Test_Disabled_submod_vs_subdir(unittest.TestCase):
+
+    def setUp(self):
+        self.root = Module.Root(test_path('submod_subdir_clash'),
+            load_submod=False)
+
+    def test_lookup_skips_submod(self):
+        self.assertEqual(self.root.foo.bar, "from foo/__init__.py")
 
 if __name__ == '__main__':
     unittest.main()

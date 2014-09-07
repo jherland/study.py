@@ -31,7 +31,7 @@ class Module (modbase):
     Root().\n"""
 
     @classmethod
-    def Root(cls, directory, name='root', src='__init__.py'):
+    def Root(cls, directory, name='root', src='__init__.py', load_submod=True):
         """Instantiate the root of a lazily-loaded module hierarchy.
 
         Return a module-like object resulting from loading the python file named
@@ -39,10 +39,10 @@ class Module (modbase):
 
         Looking up an non-existing attribute (say, 'foo') on the returned object
         shall serve as a trigger to attempt loading a 'foo.py' sub-module from
-        'directory', or - failing that - attempt loading 'src' from a 'foo'
-        sub-directory. A successful attribute lookup is automatically cached by
-        the returned object.\n"""
-        inst = cls(name, directory, src)
+        'directory' (if 'load_submod' is enabled), or - failing that - attempt
+        loading 'src' from a 'foo' sub-directory. A successful attribute lookup
+        is automatically cached by the returned object.\n"""
+        inst = cls(name, directory, src, load_submod)
         return cls.__load_file(inst.__path__, inst, directory)
 
     __updelat = modbase.__delattr__
@@ -69,8 +69,8 @@ class Module (modbase):
         return '<' + ' '.join(self.__doc__.split('\n')) + '>'
 
     @classmethod
-    def __sub_mod(cls, name, directory, src):
-        return cls(name, directory, src)
+    def __sub_mod(cls, name, directory, src, load_submod):
+        return cls(name, directory, src, load_submod)
 
     @staticmethod
     def __sub_raw(name, path, base=modbase):
@@ -106,19 +106,20 @@ Loaded from file %s
                    exists=os.path.exists,
                    isdir=os.path.isdir):
         name = self.__name__ + '.' + key
-        path = join(self.__dir, key + '.py')
-        if exists(path):
-            return self.__load_file(path, self.__sub_raw(name, path), self.__dir)
+        if self.__load_submod:
+            path = join(self.__dir, key + '.py')
+            if exists(path):
+                return self.__load_file(path, self.__sub_raw(name, path), self.__dir)
 
-        path = path[:-3] # sub-directory: drop the .py extension
+        path = join(self.__dir, key)
         if isdir(path):
-            inst = self.__sub_mod(name, path, self.__src)
+            inst = self.__sub_mod(name, path, self.__src, self.__load_submod)
             return self.__load_file(inst.__path__, inst, path)
 
         raise IOError
 
     __upinit = modbase.__init__
-    def __init__(self, name, directory, src, join=os.path.join):
+    def __init__(self, name, directory, src, load_submod, join=os.path.join):
         """Internal constructor; use Root() to construct your root object."""
         self.__path__ = join(directory, src)
         self.__upinit(name, # and a doc-string:
@@ -129,6 +130,7 @@ in %s
 """ % (name, src, directory))
         self.__dir, self.__src = directory, src
         self.__cache = {}
+        self.__load_submod = load_submod
 
     del os
 
