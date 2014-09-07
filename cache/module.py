@@ -34,8 +34,14 @@ class Module (modbase):
     def Root(cls, directory, name='root', src='__init__.py'):
         """Instantiate the root of a lazily-loaded module hierarchy.
 
-        Attribute lookup on the returned object shal serve as 
-        """
+        Return a module-like object resulting from loading the python file named
+        'src' in 'directory'.
+
+        Looking up an non-existing attribute (say, 'foo') on the returned object
+        shall serve as a trigger to attempt loading a 'foo.py' sub-module from
+        'directory', or - failing that - attempt loading 'src' from a 'foo'
+        sub-directory. A successful attribute lookup is automatically cached by
+        the returned object.\n"""
         inst = cls(name, directory, src)
         return cls.__load_file(inst.__path__, inst, directory)
 
