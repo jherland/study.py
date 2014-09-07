@@ -1,0 +1,1 @@
+bar = "from foo.py"

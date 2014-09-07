@@ -50,5 +50,29 @@ class Test_Subdir(unittest.TestCase):
         with self.assertRaises(AttributeError):
             x = self.root.missing_subdir.foo
 
+class Test_Attr_vs_submod(unittest.TestCase):
+
+    def setUp(self):
+        self.root = Module.Root(test_path('attr_submod_clash'))
+
+    def test_lookup_prefers_existing_attr(self):
+        self.assertEqual(self.root.foo.bar, "from __init__.py")
+
+class Test_Attr_vs_subdir(unittest.TestCase):
+
+    def setUp(self):
+        self.root = Module.Root(test_path('attr_subdir_clash'))
+
+    def test_lookup_prefers_existing_attr(self):
+        self.assertEqual(self.root.foo.bar, "from __init__.py")
+
+class Test_Submod_vs_subdir(unittest.TestCase):
+
+    def setUp(self):
+        self.root = Module.Root(test_path('submod_subdir_clash'))
+
+    def test_lookup_prefers_submod(self):
+        self.assertEqual(self.root.foo.bar, "from foo.py")
+
 if __name__ == '__main__':
     unittest.main()
