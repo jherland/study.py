@@ -105,6 +105,52 @@ class Test_Simple_imports(unittest.TestCase):
         root = Module.Root(test_path('simple_imports'), load_submod=False)
         self.assertEqual(root.imported_submod.foo, "submod")
 
+# Relative imports currently fail, probably because Python is missing some kind
+# of module/package context in the lazily loaded Module's environment. Instead
+# of using exec() to lazy-load modules, we should consider looking into
+# Python3's importlib and re-implement Module in a manner more compatible with
+# Python's own module loading infrastructure (see
+# https://docs.python.org/3/library/importlib.html for details).
+#
+# In Python v3.5 there's even a "class importlib.util.LazyLoader(loader)" which
+# "postpones the execution of the loader of a module until the module has an
+# attribute accessed". More details:
+#  - Docs: https://docs.python.org/3.5/library/importlib.html#importlib.util.LazyLoader
+#  - Code: http://hg.python.org/cpython/annotate/default/Lib/importlib/util.py#l205
+#  - Meta: http://bugs.python.org/issue17621
+#
+# Anyway, until this is solved, modules that use "proper" relative imports (as
+# documented in PEP #328) will FAIL to lazy-load into Module instances. However,
+# modules can apparently still use "regular" imports to access modules within
+# their own directory (like in the test case above) - at least for as long as ''
+# remains in sys.path.
+@unittest.skip("relative imports not yet supported within lazy-loaded Modules")
+class Test_Relative_imports(unittest.TestCase):
+
+    def setUp(self):
+        self.root = Module.Root(test_path('relative_imports'))
+
+    def test_child_loaded(self):
+        self.assertEqual(self.root.parent.child.foo, "child module")
+
+    def test_relative_import_sibling(self):
+        self.assertEqual(self.root.parent.child.sibling.foo, "sibling module")
+
+    def test_relative_import_parent(self):
+        self.assertEqual(self.root.parent.child.parent.foo, "parent module")
+
+    def test_relative_import_aunt(self):
+        self.assertEqual(self.root.parent.child.aunt.foo, "aunt module")
+
+    def test_relative_import_cousin(self):
+        self.assertEqual(self.root.parent.child.cousin.foo, "cousin module")
+
+    def test_relative_import_grandchild(self):
+        self.assertEqual(self.root.parent.child.grandchild.foo, "grandchild module")
+
+    def test_relative_import_niece(self):
+        self.assertEqual(self.root.parent.child.niece.foo, "niece module")
+
 class Test_lazy_loading_and_sys_modules(unittest.TestCase):
 
     def test_Root_instance_added_to_sys_modules(self):
