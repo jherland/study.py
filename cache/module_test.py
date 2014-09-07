@@ -105,5 +105,14 @@ class Test_Simple_imports(unittest.TestCase):
         root = Module.Root(test_path('simple_imports'), load_submod=False)
         self.assertEqual(root.imported_submod.foo, "submod")
 
+class Test_lazy_loading_and_sys_modules(unittest.TestCase):
+
+    def test_Root_instance_added_to_sys_modules(self):
+        before = set(sys.modules.keys())
+        root = Module.Root(test_path('single_file'), name='my_root')
+        after = set(sys.modules.keys())
+        self.assertEqual(after - before, {'my_root'})
+        self.assertEqual(sys.modules['my_root'].foo, "bar")
+
 if __name__ == '__main__':
     unittest.main()

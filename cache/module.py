@@ -45,8 +45,11 @@ class Module (modbase):
         'directory' (if 'load_submod' is enabled), or - failing that - attempt
         loading 'src' from a 'foo' sub-directory. A successful attribute lookup
         is automatically cached by the returned object.\n"""
+        import sys
         inst = cls(name, directory, src, load_submod)
-        return cls.__load_file(inst.__path__, inst, directory)
+        ret = cls.__load_file(inst.__path__, inst, directory)
+        sys.modules[name] = ret
+        return ret
 
     __updelat = modbase.__delattr__
     def __delattr__(self, key):
