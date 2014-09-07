@@ -160,6 +160,15 @@ class Test_lazy_loading_and_sys_modules(unittest.TestCase):
         self.assertEqual(after - before, {'my_root'})
         self.assertEqual(sys.modules['my_root'].foo, "bar")
 
+# TODO:
+#  - Test that __init__.py is able to 'import' other sub-modules, even when
+#    load_submod is False
+#  - root:1: RuntimeWarning: Parent module 'root' not found while handling
+#    absolute import
+#  - Relative imports! from ... import foo?
+#  - Test that auto-loaded files (bot sub-modules, and sub-directories) are
+#    properly added to the sys.modules dict
+
 if __name__ == '__main__':
     unittest.main()
 
