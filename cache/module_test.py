@@ -162,3 +162,8 @@ class Test_lazy_loading_and_sys_modules(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+# TODO:
+#  - loading files NOT called __init__.py
+#  - loading __init__.py from deeply nested subdir with missing intermediates
+#  - packages vs. lazily-loaded modules.
