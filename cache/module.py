@@ -19,13 +19,107 @@ To reload one of these lazily-loaded attributes, e.g. following an update to its
 source file, just del the relevant attribute.  Next time it's accessed, it'll be
 lazily reloaded.
 """
+import sys
+from types import ModuleType
+from importlib import import_module
+
+class LazyModule(ModuleType):
+
+    def __getattr__(self, key):
+        try:
+            super(LazyModule, self).__getattr__(key)
+        except AttributeError:
+            # Attempt to satisfy attribute lookup by lazy loading
+            print "Attempting to import '.{}' from within {} ({!r})".format(key, self.__package__, self)
+            try:
+                return import_module("." + key, self.__package__)
+            except ImportError as e:
+                raise AttributeError('No such attribute, and lazy-loading failed ({})'.format(e), key, self.__name__)
+
+class LazyModuleImporter(object):
+
+    def __init__(self, directory, modroot='root', package_file='__init__.py'):
+        self.directory = directory
+        self.modroot = modroot
+        self.package_file = package_file
+
+    def __str__(self):
+        return "<{0.__class__.__name__} mapping {0.package_file} files under {0.directory} to corresponding modules under {0.modroot}.*>".format(self)
+
+    def find_module(self, fullname, path=None):
+        print("- {0}.find_module(fullname = {1!r}, path = {2!r}) called".format(self, fullname, path))
+        if fullname == self.modroot or fullname.startswith(self.modroot + "."):
+            return self
+        return None
+
+    def get_path(self, fullname):
+        """Return the existing python file path that corresponds to 'fullname'.
+
+        Given a fully-qualified module name - "root.foo.bar" - we can
+        construct a couple of corresponding paths under self.directory:
+
+         1. A sub-module located at "foo/bar.py".
+
+         2. A sub-package located at "foo/bar/__init__.py"
+            (assuming that self.package_file has its default value).
+
+        This method returns the first of these that exist under self.directory.
+        Along with the returned path, we also return a boolean flag indicating
+        whether the return file name refers to a sub-module (False) or a
+        sub-package (True). If no existing path corresponding to 'fullname' is
+        found, ImportError is raised.
+        """
+        path_components = fullname.split(".")
+        assert path_components[0] == self.modroot
+        import os
+        path = os.sep.join(path_components[1:])
+        candidates = []
+
+        # sub-module
+        if path:
+            candidates.append((path + ".py", False))
+
+        # sub-package
+        candidates.append((os.path.join(path, self.package_file), True))
+
+        for path, is_package in candidates:
+            path = os.path.join(self.directory, path)
+            if os.path.exists(path):
+                return path, is_package
+
+        print candidates
+        raise ImportError("Failed to import {0!r}, none of the following files were found under {1}: {2}".format(fullname, self.directory, ", ".join([c[0] for c in candidates])))
+
+    def load_module(self, fullname):
+        print("* {0}.load_module(fullname = {1!r}) called".format(self, fullname))
+        path, is_package = self.get_path(fullname)
+        mod = sys.modules.setdefault(fullname, LazyModule(fullname, "Module {0} loaded from file {1} in {2} by {3}".format(fullname, path, self.directory, self.__class__.__name__)))
+        mod.__file__ = path
+        mod.__loader__ = self
+        if is_package:
+            mod.__path__ = []
+            mod.__package__ = fullname
+        else:
+            mod.__package__ = fullname.rpartition('.')[0]
+        with open(path) as f:
+            exec(f.read(), mod.__dict__)
+        return mod
+
+class Module:
+    @staticmethod
+    def Root(directory, name='root', src='__init__.py', load_submod=True):
+        import sys
+        sys.meta_path.append(LazyModuleImporter(directory, name, src))
+        from importlib import import_module
+        return import_module(name)
+
 # module is actually in __builtin__/builtins, but we can't reference it as such!
 try:
     from builtins import __class__ as modbase # Python 3
 except ImportError:
     from __builtin__ import __class__ as modbase # Python 2
 
-class Module (modbase):
+class Module2 (modbase):
     """Lazily-loaded module hierarchy.
 
     Instantiate the root of the hierarchy using Module.Root(); don't use the
@@ -124,7 +218,7 @@ Loaded from file %s
         raise IOError
 
     __upinit = modbase.__init__
-    def __init__(self, name, directory, src, load_submod, join=os.path.join):
+    def __init__(self, name, directory, src, load_submod=True, join=os.path.join):
         """Internal constructor; use Root() to construct your root object."""
         self.__path__ = join(directory, src)
         self.__upinit(name, # and a doc-string:
