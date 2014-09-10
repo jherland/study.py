@@ -30,7 +30,7 @@ class LazyModule(ModuleType):
             super(LazyModule, self).__getattr__(key)
         except AttributeError:
             # Attempt to satisfy attribute lookup by lazy loading
-            print "Attempting to import '.{}' from within {} ({!r})".format(key, self.__package__, self)
+###            print("Attempting to import '.{}' from within {} ({!r})".format(key, self.__package__, self))
             try:
                 return import_module("." + key, self.__package__)
             except ImportError as e:
@@ -38,16 +38,17 @@ class LazyModule(ModuleType):
 
 class LazyModuleImporter(object):
 
-    def __init__(self, directory, modroot='root', package_file='__init__.py'):
+    def __init__(self, directory, modroot='root', package_file='__init__.py', load_submods=True):
         self.directory = directory
         self.modroot = modroot
         self.package_file = package_file
+        self.load_submods = load_submods
 
     def __str__(self):
         return "<{0.__class__.__name__} mapping {0.package_file} files under {0.directory} to corresponding modules under {0.modroot}.*>".format(self)
 
     def find_module(self, fullname, path=None):
-        print("- {0}.find_module(fullname = {1!r}, path = {2!r}) called".format(self, fullname, path))
+###        print("- {0}.find_module(fullname = {1!r}, path = {2!r}) called".format(self, fullname, path))
         if fullname == self.modroot or fullname.startswith(self.modroot + "."):
             return self
         return None
@@ -76,7 +77,7 @@ class LazyModuleImporter(object):
         candidates = []
 
         # sub-module
-        if path:
+        if path and self.load_submods:
             candidates.append((path + ".py", False))
 
         # sub-package
@@ -87,11 +88,10 @@ class LazyModuleImporter(object):
             if os.path.exists(path):
                 return path, is_package
 
-        print candidates
         raise ImportError("Failed to import {0!r}, none of the following files were found under {1}: {2}".format(fullname, self.directory, ", ".join([c[0] for c in candidates])))
 
     def load_module(self, fullname):
-        print("* {0}.load_module(fullname = {1!r}) called".format(self, fullname))
+###        print("* {0}.load_module(fullname = {1!r}) called".format(self, fullname))
         path, is_package = self.get_path(fullname)
         mod = sys.modules.setdefault(fullname, LazyModule(fullname, "Module {0} loaded from file {1} in {2} by {3}".format(fullname, path, self.directory, self.__class__.__name__)))
         mod.__file__ = path
@@ -107,12 +107,15 @@ class LazyModuleImporter(object):
 
 class Module:
     @staticmethod
-    def Root(directory, name='root', src='__init__.py', load_submod=True):
+    def Root(directory, name=None, src='__init__.py', load_submod=True):
+        if not name:
+            name = directory.strip('./').replace('/', '_') # + str(id(directory))
         import sys
-        sys.meta_path.append(LazyModuleImporter(directory, name, src))
+        sys.meta_path.insert(0, LazyModuleImporter(directory, name, src, load_submod)) # How to clean up this? Context manager? Destructor?
         from importlib import import_module
         return import_module(name)
 
+
 # module is actually in __builtin__/builtins, but we can't reference it as such!
 try:
     from builtins import __class__ as modbase # Python 3

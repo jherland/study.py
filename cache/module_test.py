@@ -95,6 +95,7 @@ class Test_Disabled_submod_vs_subdir(unittest.TestCase):
     def test_lookup_skips_submod(self):
         self.assertEqual(self.root.foo.bar, "from foo/__init__.py")
 
+@unittest.skip("XXX")
 class Test_Simple_imports(unittest.TestCase):
 
     def test_lookup_imported_submod(self):
