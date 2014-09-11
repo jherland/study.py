@@ -102,9 +102,9 @@ class LazyModuleImporter(object):
         whether the returned file name refers to a sub-module (False) or a
         sub-package (True). If no existing path corresponding to 'fullname' is
         found, ImportError is raised.\n"""
-        path_components = fullname.split(".")
-        assert path_components[0] == self.modroot
-        path = os.sep.join(path_components[1:])
+        modpath = fullname.split(".")
+        assert modpath[0] == self.modroot
+        path = os.sep.join(modpath[1:])
         candidates = []
 
         # sub-module
@@ -131,7 +131,9 @@ class LazyModuleImporter(object):
         instance.\n"""
 ###        print("* {0}.load_module(fullname = {1!r}) called".format(self, fullname))
         path, is_package = self.get_path(fullname)
-        mod = sys.modules.setdefault(fullname, LazyModule(fullname, "Module {0} loaded from file {1} in {2} by {3}".format(fullname, path, self.directory, self.__class__.__name__)))
+        mod = sys.modules.setdefault(fullname, LazyModule(fullname,
+            "Module {0} loaded from file {1} in {2} by {3}".format(
+                fullname, path, self.directory, self.__class__.__name__)))
         mod.__file__ = path
         mod.__loader__ = self
         if is_package:
