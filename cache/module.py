@@ -52,14 +52,6 @@ class LazyModuleImporter(object):
     ('root' by default). Also allow the special package filename (__init__.py
     by default) to be customized. This allows the \n"""
 
-    @classmethod
-    @contextmanager
-    def Root(cls, directory, modroot='root', package_file='__init__.py', load_submods=True):
-        obj = cls(directory, modroot, package_file, load_submods)
-        sys.meta_path.insert(0, obj)
-        yield import_module(modroot)
-        sys.meta_path.remove(obj)
-
     def __init__(self, directory, modroot='root', package_file='__init__.py', load_submods=True):
         self.directory = directory
         self.modroot = modroot
