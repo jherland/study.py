@@ -24,6 +24,12 @@ from types import ModuleType
 from importlib import import_module
 
 class LazyModule(ModuleType):
+    """Module that auto-loads sub-modules/packages to satisfy attribute lookups.
+
+    When about to fail an attribute lookup, first attempt to automatically load
+    and return a sub-module (or sub-package) object that matches the requested
+    attribute key. If that also fails, _then_ raise the AttributeError
+    signalling a missing attribute.\n"""
 
     def __getattr__(self, key):
         try:
@@ -37,6 +43,21 @@ class LazyModule(ModuleType):
                 raise AttributeError('No such attribute, and lazy-loading failed ({})'.format(e), key, self.__name__)
 
 class LazyModuleImporter(object):
+    """Create a module hierarchy that mirrors a given directory structure.
+
+    Associate a given directory with a given (absolute) module/package name,
+    and load sub-packages (and optionally sub-modules) underneath that
+    directory into corresponding locations underneath the given module name
+    ('root' by default). Also allow the special package filename (__init__.py
+    by default) to be customized. This allows the \n"""
+
+    @classmethod
+    @contextmanager
+    def Root(cls, directory, modroot='root', package_file='__init__.py', load_submods=True):
+        obj = cls(directory, modroot, package_file, load_submods)
+        sys.meta_path.insert(0, obj)
+        yield import_module(modroot)
+        sys.meta_path.remove(obj)
 
     def __init__(self, directory, modroot='root', package_file='__init__.py', load_submods=True):
         self.directory = directory
@@ -48,6 +69,15 @@ class LazyModuleImporter(object):
         return "<{0.__class__.__name__} mapping {0.package_file} files under {0.directory} to corresponding modules under {0.modroot}.*>".format(self)
 
     def find_module(self, fullname, path=None):
+        """Determine if 'fullname' names a potential module within self.modroot.
+
+        This implements the 'finder' part of the Importer Protocol documented in
+        PEP 302, by checking if the given module name matches self.modroot, or a
+        sub-package/module of self.modroot. Thus, we 'section' off the part of
+        the module namespace that starts with self.modroot, and reserve all
+        module loading within that namespace to be performed by this instance
+        (provided that this instance is the first entry in sys.meta_path
+        configured for self.modroot).\n"""
 ###        print("- {0}.find_module(fullname = {1!r}, path = {2!r}) called".format(self, fullname, path))
         if fullname == self.modroot or fullname.startswith(self.modroot + "."):
             return self
@@ -56,20 +86,21 @@ class LazyModuleImporter(object):
     def get_path(self, fullname):
         """Return the existing python file path that corresponds to 'fullname'.
 
-        Given a fully-qualified module name - "root.foo.bar" - we can
-        construct a couple of corresponding paths under self.directory:
+        Given a fully-qualified module name - "root.foo.bar" - where the
+        initial component ("root") matches self.modroot, we can construct a
+        couple of corresponding file names under self.directory:
 
-         1. A sub-module located at "foo/bar.py".
+         1. A sub-module located at "foo/bar.py" (but only if self.load_submods
+            indicates that it is OK to import sub-modules).
 
          2. A sub-package located at "foo/bar/__init__.py"
-            (assuming that self.package_file has its default value).
+            (assuming that self.package_file == "__init__.py").
 
         This method returns the first of these that exist under self.directory.
         Along with the returned path, we also return a boolean flag indicating
-        whether the return file name refers to a sub-module (False) or a
+        whether the returned file name refers to a sub-module (False) or a
         sub-package (True). If no existing path corresponding to 'fullname' is
-        found, ImportError is raised.
-        """
+        found, ImportError is raised.\n"""
         path_components = fullname.split(".")
         assert path_components[0] == self.modroot
         import os
@@ -91,6 +122,13 @@ class LazyModuleImporter(object):
         raise ImportError("Failed to import {0!r}, none of the following files were found under {1}: {2}".format(fullname, self.directory, ", ".join([c[0] for c in candidates])))
 
     def load_module(self, fullname):
+        """Load a module name from a corresponding file under self.directory.
+
+        This implements the 'loader' part of the Importer Protocol documented in
+        PEP 302, by preparing a LazyModule instance (following the rules for
+        preparing module objects given in PEP 302) and loading the file under
+        self.directory that corresponds to 'fullname' into that LazyModule
+        instance.\n"""
 ###        print("* {0}.load_module(fullname = {1!r}) called".format(self, fullname))
         path, is_package = self.get_path(fullname)
         mod = sys.modules.setdefault(fullname, LazyModule(fullname, "Module {0} loaded from file {1} in {2} by {3}".format(fullname, path, self.directory, self.__class__.__name__)))
