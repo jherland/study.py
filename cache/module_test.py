@@ -14,12 +14,14 @@ class TestCaseWithRoot(unittest.TestCase):
     args = {} # Subclasses can add more LazyModuleImporter args here
 
     def run(self, result=None):
-        print "{}.run(): ".format(self.__class__.__name__)
+        print "{}.run1(): {!r}".format(self.__class__.__name__, sys.meta_path)
         assert self.path
         with LazyModuleImporter.Root(test_path(self.path), **self.args) as root:
             self.root = root
             super(TestCaseWithRoot, self).run(result)
+            print "{}.run2(): {!r}".format(self.__class__.__name__, sys.meta_path)
 
+@unittest.skip("XXX")
 class Test_SingleFile(TestCaseWithRoot):
     path = 'single_file'
 
@@ -164,6 +166,7 @@ class Test_Relative_imports(unittest.TestCase):
     def test_relative_import_niece(self):
         self.assertEqual(self.root.parent.child.niece.foo, "niece module")
 
+@unittest.skip("XXX")
 class Test_lazy_loading_and_sys_modules(unittest.TestCase):
 
     def test_Root_instance_added_to_sys_modules(self):

@@ -68,6 +68,7 @@ class LazyModuleImporter(object):
         self.modroot = modroot
         self.package_file = package_file
         self.load_submods = load_submods
+        print("* Created {!s}".format(self))
 
     def __str__(self):
         return "<{0.__class__.__name__} mapping {0.package_file} files under {0.directory} to corresponding modules under {0.modroot}.*>".format(self)
