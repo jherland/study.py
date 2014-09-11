@@ -34,12 +34,14 @@ class LazyModule(ModuleType):
 
     def __getattr__(self, key):
         try:
-            super(LazyModule, self).__getattr__(key)
-        except AttributeError:
+            return super(LazyModule, self).__getattr__(key)
+        except AttributeError: # key does not already exist in module
             # Attempt to satisfy attribute lookup by lazy loading
 ###            print("Attempting to import '.{}' from within {} ({!r})".format(key, self.__package__, self))
             try:
-                return import_module("." + key, self.__package__)
+                mod = import_module("." + key, self.__package__)
+                self.__setattr__(key, mod)
+                return mod
             except ImportError as e:
                 raise AttributeError('No such attribute, and lazy-loading failed ({})'.format(e), key, self.__name__)
 
