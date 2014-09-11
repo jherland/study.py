@@ -20,6 +20,7 @@ source file, just del the relevant attribute.  Next time it's accessed, it'll be
 lazily reloaded.
 """
 import sys
+import os
 from types import ModuleType
 from importlib import import_module
 
@@ -103,7 +104,6 @@ class LazyModuleImporter(object):
         found, ImportError is raised.\n"""
         path_components = fullname.split(".")
         assert path_components[0] == self.modroot
-        import os
         path = os.sep.join(path_components[1:])
         candidates = []
 
