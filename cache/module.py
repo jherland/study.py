@@ -141,9 +141,7 @@ class LazyModuleImporter(object):
 
 class Module:
     @staticmethod
-    def Root(directory, name=None, src='__init__.py', load_submod=True):
-        if not name:
-            name = directory.strip('./').replace('/', '_') # + str(id(directory))
+    def Root(directory, name='root', src='__init__.py', load_submod=True):
         import sys
         sys.meta_path.insert(0, LazyModuleImporter(directory, name, src, load_submod)) # How to clean up this? Context manager? Destructor?
         from importlib import import_module
