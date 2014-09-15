@@ -25,17 +25,24 @@ from types import ModuleType
 from importlib import import_module
 from contextlib import contextmanager
 
-class LazyModule(ModuleType):
-    """Module that auto-loads sub-modules/packages to satisfy attribute lookups.
+class LazyPackage(ModuleType):
+    """Package that auto-loads sub-modules/packages to satisfy attribute lookups
 
     When about to fail an attribute lookup, first attempt to automatically load
-    and return a sub-module (or sub-package) object that matches the requested
+    and return a sub-module or sub-package object that matches the requested
     attribute key. If that also fails, _then_ raise the AttributeError
     signalling a missing attribute.\n"""
 
+    def __str__(self):
+        return "<{} {!r} from {!r}>".format(
+            self.__class__.__name__, self.__name__, self.__file__)
+
+    def __repr__(self):
+        return str(self)
+
     def __getattr__(self, key):
         try:
-            return super(LazyModule, self).__getattr__(key)
+            return super(LazyPackage, self).__getattr__(key)
         except AttributeError: # key does not already exist in module
             # Attempt to satisfy attribute lookup by lazy loading
 ###            print("Attempting to import '.{}' from within {} ({!r})".format(key, self.__package__, self))
@@ -60,18 +67,28 @@ class LazyModuleImporter(object):
     def Root(cls, directory, modroot='root', package_file='__init__.py', load_submods=True):
         obj = cls(directory, modroot, package_file, load_submods)
         sys.meta_path.insert(0, obj)
-        yield import_module(modroot)
-        sys.meta_path.remove(obj)
+        assert modroot not in sys.modules
+
+        try:
+            yield import_module(modroot)
+        finally:
+            # Remove ourselves as a module finder/loader
+            sys.meta_path.remove(obj)
+            # Remove all traces of modroot and any children from sys.modules
+            must_remove = lambda k: k == modroot or k.startswith(modroot + '.')
+            remove_these = list(filter(must_remove, sys.modules.keys()))
+            for k in remove_these:
+                del sys.modules[k]
 
     def __init__(self, directory, modroot='root', package_file='__init__.py', load_submods=True):
         self.directory = directory
         self.modroot = modroot
         self.package_file = package_file
         self.load_submods = load_submods
-        print("* Created {!s}".format(self))
+###        print("* Created {!s}".format(self))
 
     def __str__(self):
-        return "<{0.__class__.__name__} mapping {0.package_file} files under {0.directory} to corresponding modules under {0.modroot}.*>".format(self)
+        return "<{0.__class__.__name__}:   {0.directory}/*/{0.package_file} -> {0.modroot}.*>".format(self)
 
     def find_module(self, fullname, path=None):
         """Determine if 'fullname' names a potential module within self.modroot.
@@ -129,13 +146,20 @@ class LazyModuleImporter(object):
         """Load a module name from a corresponding file under self.directory.
 
         This implements the 'loader' part of the Importer Protocol documented in
-        PEP 302, by preparing a LazyModule instance (following the rules for
-        preparing module objects given in PEP 302) and loading the file under
-        self.directory that corresponds to 'fullname' into that LazyModule
-        instance.\n"""
+        PEP 302, by creating a module instance of the appropriate type
+        (ModuleType for sub-modules, LazyPackage for sub-packages), and
+        initializing it following the rules for preparing module objects given
+        in PEP 302) and loading the file under self.directory that corresponds
+        to 'fullname' into that module instance.\n"""
 ###        print("* {0}.load_module(fullname = {1!r}) called".format(self, fullname))
         path, is_package = self.get_path(fullname)
-        mod = sys.modules.setdefault(fullname, LazyModule(fullname,
+        # If 'fullname' refers to a (sub-)package, we need its module object to
+        # be of type LazyPackage (in order to enable lazy attribute lookup). But
+        # if 'fullname' is merely a sub-module, we don't need lazy attribute
+        # lookup, since modules (as opposed to packages) cannot have sub-
+        # packages/modules
+        mod_type = LazyPackage if is_package else ModuleType
+        mod = sys.modules.setdefault(fullname, mod_type(fullname,
             "Module {0} loaded from file {1} in {2} by {3}".format(
                 fullname, path, self.directory, self.__class__.__name__)))
         mod.__file__ = path
@@ -146,6 +170,7 @@ class LazyModuleImporter(object):
         else:
             mod.__package__ = fullname.rpartition('.')[0]
         with open(path) as f:
+###            print("*** Loading {} into {!r}".format(path, mod))
             exec(f.read(), mod.__dict__)
         return mod
 
