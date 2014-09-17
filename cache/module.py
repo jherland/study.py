@@ -28,10 +28,10 @@ from contextlib import contextmanager
 class LazyPackage(ModuleType):
     """Package that auto-loads sub-modules/packages to satisfy attribute lookups
 
-    When about to fail an attribute lookup, first attempt to automatically load
-    and return a sub-module or sub-package object that matches the requested
-    attribute key. If that also fails, _then_ raise the AttributeError
-    signalling a missing attribute.\n"""
+    When about to fail an attribute lookup, first attempt to automatically
+    import and return a sub-module or sub-package object that matches the
+    requested attribute key. If that also fails, then, finally, raise an
+    AttributeError.\n"""
 
     def __str__(self):
         return "<{} {!r} from {!r}>".format(
@@ -51,80 +51,72 @@ class LazyPackage(ModuleType):
                 self.__setattr__(key, mod)
                 return mod
             except ImportError as e:
-                raise AttributeError('No such attribute, and lazy-loading failed ({})'.format(e), key, self.__name__)
+                raise AttributeError(
+                    'No such attribute, and lazy-loading failed ({})'.format(e),
+                    key, self.__name__)
 
 class LazyModuleImporter(object):
     """Create a module hierarchy that mirrors a given directory structure.
 
-    Associate a given directory with a given (absolute) module/package name,
-    and load sub-packages (and optionally sub-modules) underneath that
-    directory into corresponding locations underneath the given module name
-    ('root' by default). Also allow the special package filename (__init__.py
-    by default) to be customized. This allows the \n"""
+    Associate a given directory with a given (absolute) package name ('root' by
+    default), and load sub-packages and (optionally) sub-modules underneath that
+    directory into corresponding attributes on that package. Also allow
+    customization of the special package filename (__init__.py by default).
 
-    @classmethod
-    @contextmanager
-    def Root(cls, directory, modroot='root', package_file='__init__.py', load_submods=True):
-        obj = cls(directory, modroot, package_file, load_submods)
-        sys.meta_path.insert(0, obj)
-        assert modroot not in sys.modules
+    This class implements the Importer Protocol documented in PEP 302. As such,
+    class instances will need to be installed into sys.meta_path in order to
+    intercept module loading for everything under the given 'rootmod' package
+    name. The install() and uninstall() methods perform this administrivia.
+    For convenience, the installed() context manager perform the necessary
+    install() (on enter) and uninstall() (on exit) around a block of code.\n"""
 
-        try:
-            yield import_module(modroot)
-        finally:
-            # Remove ourselves as a module finder/loader
-            sys.meta_path.remove(obj)
-            # Remove all traces of modroot and any children from sys.modules
-            must_remove = lambda k: k == modroot or k.startswith(modroot + '.')
-            remove_these = list(filter(must_remove, sys.modules.keys()))
-            for k in remove_these:
-                del sys.modules[k]
-
-    def __init__(self, directory, modroot='root', package_file='__init__.py', load_submods=True):
-        self.directory = directory
-        self.modroot = modroot
-        self.package_file = package_file
+    def __init__(self, rootdir, rootmod='root', pkgfile='__init__.py',
+                 load_submods=True):
+        self.rootdir = rootdir
+        self.rootmod = rootmod
+        self.pkgfile = pkgfile
         self.load_submods = load_submods
 ###        print("* Created {!s}".format(self))
 
     def __str__(self):
-        return "<{0.__class__.__name__}:   {0.directory}/*/{0.package_file} -> {0.modroot}.*>".format(self)
+        return "<{0}: {1.rootdir}/*/{1.pkgfile} -> {1.rootmod}.*>".format(
+            self.__class__.__name__, self)
 
     def find_module(self, fullname, path=None):
-        """Determine if 'fullname' names a potential module within self.modroot.
+        """Determine if 'fullname' names a potential module within self.rootmod.
 
         This implements the 'finder' part of the Importer Protocol documented in
-        PEP 302, by checking if the given module name matches self.modroot, or a
-        sub-package/module of self.modroot. Thus, we 'section' off the part of
-        the module namespace that starts with self.modroot, and reserve all
+        PEP 302, by checking if the given module name matches self.rootmod, or a
+        sub-package/module of self.rootmod. Thus, we 'section' off the part of
+        the module namespace that starts with self.rootmod, and reserve all
         module loading within that namespace to be performed by this instance
         (provided that this instance is the first entry in sys.meta_path
-        configured for self.modroot).\n"""
+        configured for self.rootmod).\n"""
 ###        print("- {0}.find_module(fullname = {1!r}, path = {2!r}) called".format(self, fullname, path))
-        if fullname == self.modroot or fullname.startswith(self.modroot + "."):
+        if fullname == self.rootmod or fullname.startswith(self.rootmod + "."):
             return self
         return None
 
-    def get_path(self, fullname):
+    def __get_path(self, fullname):
         """Return the existing python file path that corresponds to 'fullname'.
 
         Given a fully-qualified module name - "root.foo.bar" - where the
-        initial component ("root") matches self.modroot, we can construct a
-        couple of corresponding file names under self.directory:
+        initial component ("root") matches self.rootmod, we can construct a
+        couple of corresponding file names under self.rootdir:
 
          1. A sub-module located at "foo/bar.py" (but only if self.load_submods
             indicates that it is OK to import sub-modules).
 
          2. A sub-package located at "foo/bar/__init__.py"
-            (assuming that self.package_file == "__init__.py").
+            (assuming that self.pkgfile == "__init__.py").
 
-        This method returns the first of these that exist under self.directory.
+        This method returns the first of these that exist under self.rootdir.
         Along with the returned path, we also return a boolean flag indicating
         whether the returned file name refers to a sub-module (False) or a
         sub-package (True). If no existing path corresponding to 'fullname' is
         found, ImportError is raised.\n"""
         modpath = fullname.split(".")
-        assert modpath[0] == self.modroot
+        assert modpath[0] == self.rootmod # sanity check
         path = os.sep.join(modpath[1:])
         candidates = []
 
@@ -133,35 +125,37 @@ class LazyModuleImporter(object):
             candidates.append((path + ".py", False))
 
         # sub-package
-        candidates.append((os.path.join(path, self.package_file), True))
+        candidates.append((os.path.join(path, self.pkgfile), True))
 
         for path, is_package in candidates:
-            path = os.path.join(self.directory, path)
+            path = os.path.join(self.rootdir, path)
             if os.path.exists(path):
                 return path, is_package
 
-        raise ImportError("Failed to import {0!r}, none of the following files were found under {1}: {2}".format(fullname, self.directory, ", ".join([c[0] for c in candidates])))
+        raise ImportError(
+            "Failed to import {0!r}, {1} has none of these files: {2}".format(
+                fullname, self.rootdir, ", ".join([c[0] for c in candidates])))
 
     def load_module(self, fullname):
-        """Load a module name from a corresponding file under self.directory.
+        """Load a module name from a corresponding file under self.rootdir.
 
         This implements the 'loader' part of the Importer Protocol documented in
         PEP 302, by creating a module instance of the appropriate type
         (ModuleType for sub-modules, LazyPackage for sub-packages), and
         initializing it following the rules for preparing module objects given
-        in PEP 302) and loading the file under self.directory that corresponds
+        in PEP 302) and loading the file under self.rootdir that corresponds
         to 'fullname' into that module instance.\n"""
 ###        print("* {0}.load_module(fullname = {1!r}) called".format(self, fullname))
-        path, is_package = self.get_path(fullname)
+        path, is_package = self.__get_path(fullname)
         # If 'fullname' refers to a (sub-)package, we need its module object to
-        # be of type LazyPackage (in order to enable lazy attribute lookup). But
-        # if 'fullname' is merely a sub-module, we don't need lazy attribute
+        # be of type LazyPackage (in order to propagate lazy attribute lookup).
+        # But if 'fullname' is merely a sub-module, we don't need lazy attribute
         # lookup, since modules (as opposed to packages) cannot have sub-
-        # packages/modules
+        # packages/modules.
         mod_type = LazyPackage if is_package else ModuleType
         mod = sys.modules.setdefault(fullname, mod_type(fullname,
             "Module {0} loaded from file {1} in {2} by {3}".format(
-                fullname, path, self.directory, self.__class__.__name__)))
+                fullname, path, self.rootdir, self.__class__.__name__)))
         mod.__file__ = path
         mod.__loader__ = self
         if is_package:
@@ -173,6 +167,42 @@ class LazyModuleImporter(object):
 ###            print("*** Loading {} into {!r}".format(path, mod))
             exec(f.read(), mod.__dict__)
         return mod
+
+    def install(self):
+        """Setup and return the lazy-loaded module hierarchy under self.rootmod.
+
+        Install self into sys.meta_path as a handler for importing the module
+        hierarchy rooted at self.rootmod.
+
+        Trigger import of self.rootmod, and return its module object.\n"""
+        sys.meta_path.insert(0, self)
+        assert self.rootmod not in sys.modules
+        return import_module(self.rootmod)
+
+    def uninstall(self):
+        """Dismantle the module hierarchy rooted at self.rootmod.
+
+        Remove self from sys.meta_path, and remove self.rootmod and all modules
+        under it.\n"""
+        sys.meta_path.remove(self)
+        # Remove all traces of self.rootmod and any children from sys.modules
+        must_remove = lambda k: k == self.rootmod or k.startswith(self.rootmod + '.')
+        for k in list(filter(must_remove, sys.modules.keys())):
+            del sys.modules[k]
+
+    @contextmanager
+    def installed(self):
+        """Context manager for a temporary lazy-loaded module hierarchy.
+
+        This is a convenience context manager which calls the above install()
+        method upon entering the context, and the corresponding uninstall()
+        upon leaving the context.\n"""
+        try:
+            yield self.install()
+        finally:
+            self.uninstall()
+
+###########################################################
 
 class Module:
     @staticmethod

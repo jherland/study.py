@@ -20,20 +20,21 @@ def debug(cls, mark):
         if k.startswith('root'):
             print("\t\t{!r}: {!r}".format(k, v))
 
-class TestCaseWithRoot(unittest.TestCase):
-    """Provide tests wirh self.root = LazyModuleImporter(path, **args)."""
+class TestCaseWithLazyModuleImporter(unittest.TestCase):
+    """Provide tests with self.root = LazyModuleImporter(path, **args)."""
     path = None # Reimplement in subclasses
     args = {} # Subclasses can add more LazyModuleImporter args here
 
     def run(self, result=None):
         debug(self.__class__, 'A')
         assert self.path
-        with LazyModuleImporter.Root(test_path(self.path), **self.args) as root:
+        importer = LazyModuleImporter(test_path(self.path), **self.args)
+        with importer.installed() as root:
             self.root = root
-            super(TestCaseWithRoot, self).run(result)
+            super(TestCaseWithLazyModuleImporter, self).run(result)
             debug(self.__class__, 'B')
 
-class Test_SingleFile(TestCaseWithRoot):
+class Test_SingleFile(TestCaseWithLazyModuleImporter):
     path = 'single_file'
 
     def test_root_lookup(self):
@@ -44,7 +45,7 @@ class Test_SingleFile(TestCaseWithRoot):
         with self.assertRaises(AttributeError):
             x = self.root.missing
 
-class Test_Submod(TestCaseWithRoot):
+class Test_Submod(TestCaseWithLazyModuleImporter):
     path = 'submod'
 
     def test_root_lookup(self):
@@ -57,7 +58,7 @@ class Test_Submod(TestCaseWithRoot):
         with self.assertRaises(AttributeError):
             x = self.root.missing_submod.foo
 
-class Test_Disabled_submod(TestCaseWithRoot):
+class Test_Disabled_submod(TestCaseWithLazyModuleImporter):
     path = 'submod'
     args = {'load_submods': False}
 
@@ -68,7 +69,7 @@ class Test_Disabled_submod(TestCaseWithRoot):
         with self.assertRaises(AttributeError):
             x = self.root.submod.foo
 
-class Test_Subdir(TestCaseWithRoot):
+class Test_Subdir(TestCaseWithLazyModuleImporter):
     path = 'subdir'
 
     def test_root_lookup(self):
@@ -85,25 +86,25 @@ class Test_Subdir(TestCaseWithRoot):
         with self.assertRaises(AttributeError):
             x = self.root.subdir.missing
 
-class Test_Attr_vs_submod(TestCaseWithRoot):
+class Test_Attr_vs_submod(TestCaseWithLazyModuleImporter):
     path = 'attr_submod_clash'
 
     def test_lookup_prefers_existing_attr(self):
         self.assertEqual(self.root.foo.bar, "from __init__.py")
 
-class Test_Attr_vs_subdir(TestCaseWithRoot):
+class Test_Attr_vs_subdir(TestCaseWithLazyModuleImporter):
     path = 'attr_subdir_clash'
 
     def test_lookup_prefers_existing_attr(self):
         self.assertEqual(self.root.foo.bar, "from __init__.py")
 
-class Test_Submod_vs_subdir(TestCaseWithRoot):
+class Test_Submod_vs_subdir(TestCaseWithLazyModuleImporter):
     path = 'submod_subdir_clash'
 
     def test_lookup_prefers_submod(self):
         self.assertEqual(self.root.foo.bar, "from foo.py")
 
-class Test_Disabled_submod_vs_subdir(TestCaseWithRoot):
+class Test_Disabled_submod_vs_subdir(TestCaseWithLazyModuleImporter):
     path = 'submod_subdir_clash'
     args = {'load_submods': False}
 
@@ -114,20 +115,19 @@ class Test_Simple_import_from_lazymod(unittest.TestCase):
 
     def test_lookup_imported_submod(self):
         if PYTHON2: # Old-style relative works in Python2
-            with LazyModuleImporter.Root(test_path('simple_imports')) as root:
+            with LazyModuleImporter(test_path('simple_imports')).installed() as root:
                 self.assertEqual(root.imported_submod.foo, "submod")
         if PYTHON3: # Old-style relative import fails in Python3
             with self.assertRaises(ImportError):
-                with LazyModuleImporter.Root(test_path('simple_imports')) as r:
+                with LazyModuleImporter(test_path('simple_imports')).installed() as root:
                     pass
 
     def test_lookup_imported_submod_fails_when_disabled(self): # DESIRED?!
         with self.assertRaises(ImportError):
-            with LazyModuleImporter.Root(test_path('simple_imports'),
-                                         load_submods=False) as root:
+            with LazyModuleImporter(test_path('simple_imports'), load_submods=False).installed() as root:
                 pass
 
-class Test_Relative_imports(TestCaseWithRoot):
+class Test_Relative_imports(TestCaseWithLazyModuleImporter):
     path = 'relative_imports'
 
     def test_child_loaded(self):
@@ -153,17 +153,19 @@ class Test_Relative_imports(TestCaseWithRoot):
 
 class Test_lazy_loading_and_sys_modules(unittest.TestCase):
 
-    def test_Root_instance_added_to_sys_modules(self):
+    def test_my_root_instance_added_to_sys_modules(self):
         before = set(sys.modules.keys())
-        with LazyModuleImporter.Root(test_path('single_file'), 'my_root') as root:
+        with LazyModuleImporter(test_path('single_file'), 'my_root').installed() as root:
             after = set(sys.modules.keys())
             self.assertEqual(after - before, set(['my_root']))
             self.assertEqual(sys.modules['my_root'].foo, "bar")
 
 if __name__ == '__main__':
-    unittest.main(verbosity=5)
+    unittest.main()
 
 # TODO:
+#  - self.root _is_ sys.modules['mymodule']
+#  - Missing root package file
 #  - loading files NOT called __init__.py
 #  - loading __init__.py from deeply nested subdir with missing intermediates
 #  - packages vs. lazily-loaded modules.
